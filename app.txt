@@ -1,0 +1,109 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import plotly.graph_objects as go
+import plotly.express as px
+import datetime
+from datetime import date, timedelta
+from statsmodels.tsa.seasonal import seasonal_decompose
+import statsmodels.api as sm
+
+# tile of app
+title = st.title("Stock Prediction App")
+subheading = st.subheader("This app predicts the stock trends")
+
+# start and end date
+st.sidebar.header("Select Start and End date")
+start_date = st.sidebar.date_input('Start Date', date(2016, 1, 1))
+end_date = st.sidebar.date_input('End Date', datetime.date.today())
+
+# Company Stocks
+Stocks_symbol = ["RELIANCE.NS", "SBIN.NS", "AXISBANK.NS", "ITC.NS", "ASIANPAINT.NS", "HDFCBANK.NS"]
+selected_stock = st.sidebar.selectbox("Choose your stock", Stocks_symbol)
+
+# getting stocks data
+stocks_data = yf.download(selected_stock, start=start_date, end=end_date)
+stocks_data = stocks_data.reset_index(inplace=False)
+caption = st.write('Data from', start_date, 'to', end_date)
+view = st.write(pd.DataFrame(stocks_data.tail(10)))
+
+# plotting data
+st.header("Visualizing data")
+st.write("**Note**: Select the Date range and Stock from the left sidebar")
+fig = px.line(stocks_data, x='Date', y=['Open', 'Close', 'High', 'Low'], title = 'Different Variations of Stocks', width=800, height=400)
+st.plotly_chart(fig)
+
+# Selecting Column whose data being forecasted
+column = st.selectbox("Select Column whose data being forecasted", stocks_data.columns[1:])
+
+data = stocks_data[['Date', column]]
+st.write("Selected data")
+st.write(data.tail(10))
+
+# Decomposition of data
+# st.header("Decomposition of Stock Data")
+decomposition = seasonal_decompose(data[column], model='additive', period=12)
+# st.write(decomposition.plot())
+st.plotly_chart(px.line(x=stocks_data['Date'], y=decomposition.trend, title='Trend', width=800, height=400, labels={'x':'Date', 'y':'Price'}).update_traces(line_color = 'Red'))
+
+# model parameters and seasonal order
+p = 1  #st.number_input("Select p value", value=1)
+d = 1  #st.number_input("Select d value", value=1)
+q = 2  #st.number_input("Select q value", value=1)
+seasonal_p = 12 #st.number_input("Select seasonal value", value=12)
+
+
+# Prediction using user input values
+st.write("<p style = 'color:green; font-size:40px; font-weight: bold;'>Forecasting Stocks data</p>", unsafe_allow_html=True)
+forecast_period = st.number_input("Select Number of days for forecasting", value=5)
+
+
+# selecting model
+model = sm.tsa.statespace.SARIMAX(data[column], order=(p,d,q), seasonal_order=(p,d,q,12))
+model = model.fit(disp=-1)
+
+
+# predictions
+predictions = model.get_prediction(start = len(stocks_data), end= len(stocks_data)+ forecast_period-1)
+predictions = predictions.predicted_mean
+predictions.index = pd.date_range(start=end_date, periods=len(predictions), freq='D')
+predictions = pd.DataFrame(predictions)
+predictions.insert(0, 'Date', predictions.index)
+predictions.reset_index(drop=True, inplace=True)
+st.write("## Predictions", predictions)
+st.write("## Actual Data", data.tail())
+
+# final plotting of predictions
+fig_1 = go.Figure()
+
+# plotting actual data
+fig_1.add_trace(go.Scatter(x=data['Date'], y=data[column], mode='lines', name='Actual', line=dict(color='green')))
+
+# plotting predicted data
+fig_1.add_trace(go.Scatter(x=predictions['Date'], y=predictions['predicted_mean'], mode='lines', name='Predicted', line=dict(color='red')))
+
+# setting title and labels 
+fig_1.update_layout(title = 'Actual v/s Predicted', xaxis_title = 'Date', yaxis_title = 'Price', width = 800, height = 400)
+
+# final display
+st.plotly_chart(fig_1)
+
+# building buttons for showing separate plots
+show_graphs = False
+if st.button('Show Separate Graphs'):
+    if not show_graphs:
+        st.write(px.line(x=data['Date'], y=data[column], title='Actual', width=1000, height=400, labels={'x':'Date', 'y':'Price'}).update_traces(line_color='green'))
+        st.write(px.line(x=predictions['Date'], y=predictions['predicted_mean'], title='Predicted', width=1000, height=400, labels={'x':'Date', 'y':'Price'}).update_traces(line_color='red'))
+        show_graphs = True
+    else:
+        show_graphs = False
+
+hide_graphs = False
+if st.button("Hide Separate Graphs"):
+    if not hide_graphs:
+        hide_graphs = True
+    else:
+        hide_graphs = False
