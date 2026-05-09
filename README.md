@@ -122,4 +122,94 @@ The LSTM model currently predicts based on the artifacts checked into the reposi
 
 ---
 
-*For an in-depth breakdown of the engineering tradeoffs, interview preparation Q&As, and design rationale, please read the included `SELF_README.md`.*
+# 🧠 Engineering Deep Dive & Interview Preparation
+
+*This section is an architectural deep dive into the engineering decisions behind the project. It serves as a study guide for discussing this project in technical interviews.*
+
+## 1. Feature Tradeoff Analysis
+
+### Feature 1: Dual-Model Engine (SARIMAX + LSTM)
+Instead of forcing the user to rely on a single prediction, the app runs two completely different mathematical approaches in parallel.
+
+*   **SARIMAX (Seasonal Auto-Regressive Integrated Moving Average with eXogenous factors):** A classical statistical model. It is exceptionally fast to fit on the fly and is highly interpretable. It explicitly models linear trends and seasonality.
+*   **LSTM (Long Short-Term Memory):** A Recurrent Neural Network (RNN) architecture. It excels at finding non-linear, hidden, and complex patterns over long sequences of historical data.
+
+**✅ Benefits:**
+*   **Confidence via Consensus:** If both the linear model (SARIMAX) and non-linear model (LSTM) predict an upward trend, confidence is much higher.
+*   **Speed:** SARIMAX fits instantly in the browser session for quick experimentation.
+
+**❌ Drawbacks:**
+*   SARIMAX struggles with sudden, non-linear market shocks.
+*   LSTM is a "black box"—it is very difficult to explain exactly *why* it made a specific prediction.
+
+### 📊 Dual-Model Summary Table
+| Aspect | SARIMAX | LSTM |
+| :--- | :--- | :--- |
+| **Type** | Classical Statistical | Deep Learning (RNN) |
+| **Execution** | Fit live in browser | Pre-trained offline, inferred live |
+| **Strengths** | Interpretable, fast, handles linear seasonality | Captures deep, non-linear dependencies |
+| **Weaknesses** | Fails on complex, hidden patterns | Black-box, computationally expensive to train |
+
+---
+
+### Feature 2: Offline Artifact Pipeline (The "Train Once, Infer Fast" Pattern)
+Training a neural network inside a web application is an anti-pattern. It causes timeouts, freezes the UI, and costs massive amounts of server compute. To solve this, the LSTM is trained in a Jupyter Notebook. 
+
+Once trained, the model weights (`lstm_model.keras`), data scalers (`scaler.pkl`), and last known sequences are exported to an `artifacts/` directory. The Streamlit app simply deserializes these artifacts and runs a rapid `model.predict()`.
+
+**✅ Benefits:**
+*   **Blazing Fast UI:** Inference takes milliseconds.
+*   **Zero Compute Cost:** No expensive GPUs are required to host the web app.
+
+**❌ Drawbacks:**
+*   **Static Weights:** The LSTM model does not learn from new data live. If the market fundamentally changes, the model will degrade (Model Drift) until a developer manually re-runs the notebook and updates the artifacts.
+
+### 📊 Artifact Pipeline Summary Table
+| Concept | Explanation | Benefit to Application |
+| :--- | :--- | :--- |
+| **Artifact Export** | Saving `.keras` and `.pkl` files offline. | Decouples heavy training from the web server. |
+| **Inference Only** | App only calls `predict()`, never `fit()`. | UI remains responsive; zero timeout errors. |
+| **Model Drift** | Weights become outdated over time. | *Drawback*: Requires manual retraining schedules. |
+
+---
+
+### Feature 3: Aggressive Caching (`@st.cache_data` & `@st.cache_resource`)
+Streamlit's execution model dictates that every time a user clicks a button or changes a date, the *entire Python script runs from top to bottom*. Without caching, the app would re-download data from Yahoo Finance and re-load the 3.5MB LSTM model on every click.
+
+*   `@st.cache_data` is used for `yfinance` API calls. It hashes the ticker symbol and dates. If they haven't changed, it returns data instantly from memory.
+*   `@st.cache_resource` is used for the LSTM Keras model. It ensures the heavy deep-learning object is initialized exactly as a singleton (once per server lifecycle).
+
+**✅ Benefits:**
+*   Prevents Yahoo Finance from IP-banning the server for rate-limiting.
+*   Reduces memory usage and drops load times to near zero.
+
+**❌ Drawbacks:**
+*   Memory footprint can grow significantly if users query hundreds of different tickers in a single session without cache-clearing mechanisms.
+
+### 📊 Caching Summary Table
+| Decorator | Target | Purpose |
+| :--- | :--- | :--- |
+| `@st.cache_data` | `yfinance.download()` | Caches serializable data (Pandas DataFrames) to stop API rate-limiting. |
+| `@st.cache_resource` | `load_model()` | Caches un-serializable objects (Keras Models) as singletons in RAM. |
+
+---
+
+### Feature 4: Cloud-Optimized Dependency Management
+Standard `tensorflow` installations include massive GPU libraries (CUDA, cuDNN) by default. This easily balloons the container size to >2GB. Free-tier hosting platforms (like Streamlit Community Cloud or Heroku) typically kill applications that exceed 1GB of RAM.
+
+By explicitly using `tensorflow-cpu` in `requirements.txt`, we strip out the GPU bloat.
+
+**✅ Benefits:**
+*   Guaranteed successful deployment on free-tier cloud architectures.
+*   Massively faster CI/CD pipeline and Docker build times.
+
+**❌ Drawbacks:**
+*   CPU inference is technically slower than GPU inference, but for predicting a 30-day array on a single ticker, the difference is negligible (milliseconds).
+
+### 📊 Dependency Summary Table
+| Dependency | Original | Optimized | Why it was changed |
+| :--- | :--- | :--- | :--- |
+| **TensorFlow** | `tensorflow` | `tensorflow-cpu` | Reduces memory footprint from >2GB to <500MB to prevent cloud OOM (Out of Memory) crashes. |
+
+---
+
