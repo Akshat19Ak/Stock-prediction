@@ -55,3 +55,6 @@ htmlcov/
 # zero project value while creating cross-platform noise.
 .DS_Store
 Thumbs.db
+
+# Local deep-dive documentation (not needed in source control).
+SELF_README.md
