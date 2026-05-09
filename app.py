@@ -4,12 +4,10 @@ import pandas as pd
 import numpy as np
 import os
 import pickle
-import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.graph_objects as go
 import plotly.express as px
 import datetime
-from datetime import date, timedelta
+from datetime import date
 from statsmodels.tsa.seasonal import seasonal_decompose
 import statsmodels.api as sm
 
@@ -22,6 +20,7 @@ except Exception:
 ARTIFACT_DIR = "artifacts/lstm"
 
 
+@st.cache_resource
 def load_lstm_artifacts():
     """Load notebook-exported files used for LSTM inference in Streamlit."""
     required = {
@@ -136,7 +135,11 @@ selected_stock = st.sidebar.selectbox("Choose your stock", Stocks_symbol)
 # ================================
 # FETCH STOCK DATA
 # ================================
-stocks_data = yf.download(selected_stock, start=start_date, end=end_date)
+@st.cache_data
+def fetch_stock_data(symbol, start, end):
+    return yf.download(symbol, start=start, end=end)
+
+stocks_data = fetch_stock_data(selected_stock, start_date, end_date)
 
 if stocks_data.empty:
     st.error("No data available for selected date range")
@@ -371,7 +374,7 @@ else:
 
     history_payload = lstm_payload.get("history_payload")
     if history_payload and "close_series" in history_payload:
-        history_close = pd.Series(history_payload["close_series"])  # historical close from notebook ticker run
+        history_close = pd.Series(np.array(history_payload["close_series"]).flatten())  # historical close from notebook ticker run
         lstm_fig.add_trace(
             go.Scatter(
                 x=history_close.index,
@@ -383,8 +386,8 @@ else:
         )
 
     if history_payload and "valid_predictions" in history_payload and "valid_close" in history_payload:
-        valid_close = pd.Series(history_payload["valid_close"])
-        valid_pred = pd.Series(history_payload["valid_predictions"])
+        valid_close = pd.Series(np.array(history_payload["valid_close"]).flatten())
+        valid_pred = pd.Series(np.array(history_payload["valid_predictions"]).flatten())
 
         lstm_fig.add_trace(
             go.Scatter(
