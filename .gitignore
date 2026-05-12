@@ -58,3 +58,4 @@ Thumbs.db
 
 # Local deep-dive documentation (not needed in source control).
 SELF_README.md
+temp/
