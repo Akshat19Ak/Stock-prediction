@@ -12,12 +12,38 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import statsmodels.api as sm
 
 try:
-    from tensorflow.keras.models import load_model
+    from keras.models import load_model as keras_load_model
 except Exception:
-    load_model = None
+    keras_load_model = None
+
+try:
+    from tensorflow.keras.models import load_model as tf_load_model
+except Exception:
+    tf_load_model = None
 
 
 ARTIFACT_DIR = "artifacts/lstm"
+
+
+def _load_model_compat(model_path):
+    """Try multiple Keras loaders to handle keras/tf.keras environment differences."""
+    loaders = []
+    if keras_load_model is not None:
+        loaders.append(("keras", keras_load_model))
+    if tf_load_model is not None:
+        loaders.append(("tensorflow.keras", tf_load_model))
+
+    if not loaders:
+        raise RuntimeError("TensorFlow/Keras is not installed.")
+
+    errors = []
+    for loader_name, loader in loaders:
+        try:
+            return loader(model_path, compile=False)
+        except Exception as ex:
+            errors.append(f"{loader_name}: {ex}")
+
+    raise RuntimeError(" | ".join(errors))
 
 
 @st.cache_resource
@@ -34,11 +60,11 @@ def load_lstm_artifacts():
     if missing:
         return None, f"Missing LSTM artifact files: {', '.join(missing)}"
 
-    if load_model is None:
+    if keras_load_model is None and tf_load_model is None:
         return None, "TensorFlow is not installed. Add tensorflow to requirements and install dependencies."
 
     try:
-        model = load_model(required["model"])
+        model = _load_model_compat(required["model"])
 
         with open(required["scaler"], "rb") as f:
             scaler = pickle.load(f)
@@ -80,7 +106,16 @@ def load_lstm_artifacts():
         }
         return payload, None
     except Exception as ex:
-        return None, f"Unable to load LSTM artifacts: {ex}"
+        err = str(ex)
+        if "InputLayer" in err and "Unrecognized keyword arguments" in err:
+            return None, (
+                "Unable to load LSTM artifacts due to TensorFlow/Keras version mismatch. "
+                "The model was saved with a different Keras config format than the app runtime supports. "
+                "Re-generate artifacts using the same TensorFlow/Keras version as this app, "
+                "or align app dependencies with the notebook environment. "
+                f"Raw error: {err}"
+            )
+        return None, f"Unable to load LSTM artifacts: {err}"
 
 
 def forecast_with_lstm(payload, forecast_days):
