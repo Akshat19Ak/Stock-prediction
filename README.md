@@ -30,8 +30,8 @@ This repository was engineered with production scaling, cloud limitations, and u
 - The Streamlit application utilizes `@st.cache_resource` to load this 3.5MB model exactly once into RAM. Inference is executed in real-time, keeping the UI blazingly fast.
 
 ### 4. Cloud-Optimized for Zero-Cost Deployments
-- Standard `tensorflow` packages include massive GPU binaries (CUDA/cuDNN) that easily push container sizes past 2GB, causing crashes on free-tier cloud platforms (which strictly cap memory at 1GB).
-- **The Solution:** The project explicitly relies on `tensorflow-cpu`, slashing the memory footprint by over 60%. This guarantees flawless, stable deployments on platforms like Streamlit Community Cloud or Heroku.
+- Standard TensorFlow setups can add significant footprint and startup overhead.
+- **Current Setup:** This repository uses `tensorflow==2.21.0` (CPU inference on this project setup), plus caching and prebuilt artifacts to keep runtime responsive and deployment-friendly.
 
 ### 5. Interactive, Dynamic Visualizations
 - Migrated away from static Matplotlib images to fully dynamic **Plotly Express & Graph Objects**.
@@ -100,7 +100,7 @@ streamlit run app.py
 
 ## ☁️ 1-Click Deployment to Streamlit Cloud
 
-Because of the aggressive caching and the switch to `tensorflow-cpu`, this repository is **100% ready for free cloud deployment**.
+Because of aggressive caching and prebuilt LSTM artifacts, this repository is ready for free cloud deployment with the pinned dependencies.
 
 1. Commit and push your code to your GitHub repository. *(Ensure the `artifacts/` folder is included in the commit!)*
 2. Log in to [Streamlit Community Cloud](https://share.streamlit.io/).
@@ -194,10 +194,49 @@ Streamlit's execution model dictates that every time a user clicks a button or c
 
 ---
 
+## 🎯 Feature Purpose and Real User Use-Cases
+
+Each visible feature is mapped to a concrete purpose so the app remains useful, not decorative:
+
+1. **Ticker + Date Filters (Sidebar)**
+- **Purpose:** Let users scope analysis to a relevant instrument and time range.
+- **Use-case:** "I want to compare trend behavior for `HDFCBANK.NS` over the last 2 years."
+
+2. **Seasonal Decomposition + SARIMAX Forecast**
+- **Purpose:** Give a transparent, interpretable baseline forecast that updates live.
+- **Use-case:** "I need quick directional insight and seasonality behavior without retraining ML models."
+
+3. **LSTM Forecast From Artifacts**
+- **Purpose:** Provide fast deep-learning inference without expensive online training.
+- **Use-case:** "I want to view non-linear model output immediately in the dashboard with low latency."
+
+4. **Interactive Plotly Visuals**
+- **Purpose:** Make model behavior inspectable (zoom, hover, compare traces).
+- **Use-case:** "I need to explain model outputs to stakeholders with exact values and trend overlays."
+
+5. **Notebook-to-App Artifact Pipeline**
+- **Purpose:** Separate heavy training from serving for reliability and lower costs.
+- **Use-case:** "Data scientist retrains offline weekly; app users get stable inference daily."
+
+---
+
+## ⚠️ Current Practical Limitations (Important)
+
+1. **LSTM artifact scope**
+- LSTM predictions are based on the saved artifact set in `artifacts/lstm` and may not perfectly match the currently selected sidebar ticker/date unless artifacts were trained for that exact context.
+
+2. **Not investment advice**
+- Forecasts are educational/analytical outputs and should not be used as sole basis for trading decisions.
+
+3. **Data source constraints**
+- `yfinance` is convenient but can be rate-limited and may not match exchange-grade data quality.
+
+---
+
 ### Feature 4: Cloud-Optimized Dependency Management
 Standard `tensorflow` installations include massive GPU libraries (CUDA, cuDNN) by default. This easily balloons the container size to >2GB. Free-tier hosting platforms (like Streamlit Community Cloud or Heroku) typically kill applications that exceed 1GB of RAM.
 
-By explicitly using `tensorflow-cpu` in `requirements.txt`, we strip out the GPU bloat.
+By pinning TensorFlow consistently in `requirements.txt` and serving only prebuilt artifacts, the runtime stays stable and lightweight for this project.
 
 **✅ Benefits:**
 *   Guaranteed successful deployment on free-tier cloud architectures.
@@ -209,7 +248,7 @@ By explicitly using `tensorflow-cpu` in `requirements.txt`, we strip out the GPU
 ### 📊 Dependency Summary Table
 | Dependency | Original | Optimized | Why it was changed |
 | :--- | :--- | :--- | :--- |
-| **TensorFlow** | `tensorflow` | `tensorflow-cpu` | Reduces memory footprint from >2GB to <500MB to prevent cloud OOM (Out of Memory) crashes. |
+| **TensorFlow** | Unpinned / mismatched envs | `tensorflow==2.21.0` (pinned) | Reduces train/serve mismatch risk and improves reproducibility. |
 
 ---
 
