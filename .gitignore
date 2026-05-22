@@ -31,5 +31,7 @@ htmlcov/
 Thumbs.db
 
 SELF_README.md
+# temp/ directory is used for temporary files for user
+
 temp/
 requirementsViaPipfreeze_showsallInstalledLibraries.txt
