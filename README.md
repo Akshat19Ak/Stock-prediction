@@ -59,19 +59,19 @@ flowchart TB
     subgraph Engine[Prediction Engine]
         direction LR
         Decision{Execution Split}
-        SARIMAX[Statsmodels SARIMAX — live fit]
-        Ensemble[Ensembling / Comparator]
-        Artifacts[Artifacts store: artifacts/lstm]
-        LSTM_Load[load_model() - st.cache_resource]
-        LSTM_Infer[LSTM Inference - Keras predict()]
-        Scalers[scaler.pkl & sequence buffers]
+        SARIMAX[Statsmodels SARIMAX live fit]
+        Ensemble[Ensembling and Comparator]
+        Artifacts[Artifacts store artifacts/lstm]
+        LSTM_Load[load_model cached]
+        LSTM_Infer[LSTM inference]
+        Scalers[scaler.pkl and sequence buffers]
     end
 
     subgraph Offline[Offline Training & CI]
         direction TB
         Notebook[Retrain Notebook (.ipynb)]
         Trainer[Training Environment (GPU/Local)]
-        Export[Export: .keras, .pkl -> artifacts/]
+        Export[Export .keras .pkl to artifacts]
         CI[Optional CI/CD / Retrain Scheduler]
     end
 
@@ -85,7 +85,7 @@ flowchart TB
     %% UI -> Ingest
     UI_Input -->|requests| YF
     UI_Controls -->|controls| UI_Input
-    YF -->|raw CSV/DF| Cache
+    YF -->|raw CSV| Cache
     Cache --> Preproc
 
     %% Preproc -> Engine
@@ -121,6 +121,10 @@ flowchart TB
 - Ensemble: simple comparator/merger that presents both model outputs and confidence cues to the UI (no heavy ensembling required).
 - Offline: training happens in `STOCK MARKET PREDICITION PROJECT.ipynb` -> produces artifacts committed to `artifacts/` or pushed to an artifact store. Optionally automated via CI/scheduler.
 - Infra: host on Streamlit Cloud, VPS, or containerize; add simple logging and health checks for production readiness.
+
+**Rendered Diagram (static):**
+
+![Architecture Diagram](assets/architecture-diagram.svg)
 
 **Implementation Mapping (file references):**
 - App: [app.py](app.py)
