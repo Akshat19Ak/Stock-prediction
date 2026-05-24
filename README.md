@@ -52,7 +52,7 @@ flowchart TB
     subgraph Ingest[Data Ingestion Layer]
         direction LR
         YF[yfinance Download]
-        Cache[@st.cache_data]
+        Cache[st.cache_data]
         Preproc[Preprocessing & Feature Engineering]
     end
 
@@ -61,9 +61,9 @@ flowchart TB
         Decision{Execution Split}
         SARIMAX[Statsmodels SARIMAX — live fit]
         Ensemble[Ensembling / Comparator]
-        Artifacts[Artifacts Store (artifacts/lstm/)]
-        LSTM_Load[load_model() @st.cache_resource]
-        LSTM_Infer[LSTM Inference (Keras predict())]
+        Artifacts[Artifacts store: artifacts/lstm]
+        LSTM_Load[load_model() - st.cache_resource]
+        LSTM_Infer[LSTM Inference - Keras predict()]
         Scalers[scaler.pkl & sequence buffers]
     end
 
