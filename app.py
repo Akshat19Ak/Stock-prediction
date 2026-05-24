@@ -187,7 +187,20 @@ stocks_data.reset_index(inplace=True)
 if isinstance(stocks_data.columns, pd.MultiIndex):
     stocks_data.columns = stocks_data.columns.get_level_values(0)
 
-# Ensure Date is datetime
+# Ensure Date column exists and is datetime
+if 'Date' not in stocks_data.columns:
+    # If Date is still in index, reset again
+    if hasattr(stocks_data.index, 'name') and stocks_data.index.name == 'Date':
+        stocks_data.reset_index(inplace=True)
+    # If still missing, try common alternatives
+    if 'Date' not in stocks_data.columns:
+        date_cols = [col for col in stocks_data.columns if 'date' in col.lower()]
+        if date_cols:
+            stocks_data.rename(columns={date_cols[0]: 'Date'}, inplace=True)
+        else:
+            st.error("Cannot find Date column in downloaded data")
+            st.stop()
+
 stocks_data['Date'] = pd.to_datetime(stocks_data['Date'])
 
 st.write("Data from", start_date, "to", end_date)
