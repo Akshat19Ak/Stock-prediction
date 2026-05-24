@@ -44,8 +44,8 @@ This repository was engineered with production scaling, cloud limitations, and u
 flowchart TB
     subgraph UI[Streamlit Frontend]
         direction TB
-        UI_Input[User Inputs: ticker, date range, options]
-        UI_Controls[Sidebar & Controls]
+        UI_Input[User Inputs ticker date range options]
+        UI_Controls[Sidebar Controls]
         UI_Visuals[Plotly Visualizations]
     end
 
@@ -53,7 +53,7 @@ flowchart TB
         direction LR
         YF[yfinance Download]
         Cache[st.cache_data]
-        Preproc[Preprocessing & Feature Engineering]
+        Preproc[Preprocessing Feature Engineering]
     end
 
     subgraph Engine[Prediction Engine]
@@ -61,24 +61,24 @@ flowchart TB
         Decision{Execution Split}
         SARIMAX[Statsmodels SARIMAX live fit]
         Ensemble[Ensembling and Comparator]
-        Artifacts[Artifacts store artifacts/lstm]
+        Artifacts[Artifacts store artifacts lstm]
         LSTM_Load[load_model cached]
         LSTM_Infer[LSTM inference]
         Scalers[scaler.pkl and sequence buffers]
     end
 
-    subgraph Offline[Offline Training & CI]
+    subgraph Offline[Offline Training CI]
         direction TB
-        Notebook[Retrain Notebook (.ipynb)]
-        Trainer[Training Environment (GPU/Local)]
+        Notebook[Retrain Notebook ipynb]
+        Trainer[Training Environment GPU Local]
         Export[Export .keras .pkl to artifacts]
-        CI[Optional CI/CD / Retrain Scheduler]
+        CI[Optional CI CD Retrain Scheduler]
     end
 
-    subgraph Infra[Deployment & Observability]
+    subgraph Infra[Deployment Observability]
         direction TB
-        Hosting[Streamlit Cloud / VPS / Docker]
-        Logs[App Logging & Metrics]
+        Hosting[Streamlit Cloud VPS Docker]
+        Logs[App Logging Metrics]
         Monitoring[Simple Health Checks]
     end
 
@@ -121,10 +121,6 @@ flowchart TB
 - Ensemble: simple comparator/merger that presents both model outputs and confidence cues to the UI (no heavy ensembling required).
 - Offline: training happens in `STOCK MARKET PREDICITION PROJECT.ipynb` -> produces artifacts committed to `artifacts/` or pushed to an artifact store. Optionally automated via CI/scheduler.
 - Infra: host on Streamlit Cloud, VPS, or containerize; add simple logging and health checks for production readiness.
-
-**Rendered Diagram (static):**
-
-![Architecture Diagram](assets/architecture-diagram.svg)
 
 **Implementation Mapping (file references):**
 - App: [app.py](app.py)
