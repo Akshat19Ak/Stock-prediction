@@ -40,22 +40,97 @@ This repository was engineered with production scaling, cloud limitations, and u
 ---
 
 ## 🏗️ Technical Architecture
-
 ```mermaid
-flowchart LR
-    A[User UI Input] -->|Ticker & Dates| B(yfinance API)
-    B -->|Cached Data| C{Execution Split}
-    
-    C -->|Live Fit| D[Statsmodels SARIMAX]
-    D --> E[Linear Forecast]
-    
-    C -->|Pre-Trained Load| F[TensorFlow CPU]
-    F -->|Load Artifacts| G[LSTM Inference]
-    
-    E --> H[Plotly Dashboard]
-    G --> H
+flowchart TB
+    subgraph UI[Streamlit Frontend]
+        direction TB
+        UI_Input[User Inputs: ticker, date range, options]
+        UI_Controls[Sidebar & Controls]
+        UI_Visuals[Plotly Visualizations]
+    end
+
+    subgraph Ingest[Data Ingestion Layer]
+        direction LR
+        YF[yfinance Download]
+        Cache[@st.cache_data]
+        Preproc[Preprocessing & Feature Engineering]
+    end
+
+    subgraph Engine[Prediction Engine]
+        direction LR
+        Decision{Execution Split}
+        SARIMAX[Statsmodels SARIMAX — live fit]
+        Ensemble[Ensembling / Comparator]
+        Artifacts[Artifacts Store (artifacts/lstm/)]
+        LSTM_Load[load_model() @st.cache_resource]
+        LSTM_Infer[LSTM Inference (Keras predict())]
+        Scalers[scaler.pkl & sequence buffers]
+    end
+
+    subgraph Offline[Offline Training & CI]
+        direction TB
+        Notebook[Retrain Notebook (.ipynb)]
+        Trainer[Training Environment (GPU/Local)]
+        Export[Export: .keras, .pkl -> artifacts/]
+        CI[Optional CI/CD / Retrain Scheduler]
+    end
+
+    subgraph Infra[Deployment & Observability]
+        direction TB
+        Hosting[Streamlit Cloud / VPS / Docker]
+        Logs[App Logging & Metrics]
+        Monitoring[Simple Health Checks]
+    end
+
+    %% UI -> Ingest
+    UI_Input -->|requests| YF
+    UI_Controls -->|controls| UI_Input
+    YF -->|raw CSV/DF| Cache
+    Cache --> Preproc
+
+    %% Preproc -> Engine
+    Preproc --> Decision
+    Decision -->|fit live| SARIMAX
+    Decision -->|use artifacts| LSTM_Load
+
+    %% LSTM path
+    LSTM_Load --> Scalers
+    Scalers --> LSTM_Infer
+    Artifacts --> LSTM_Load
+
+    %% Combine outputs
+    SARIMAX --> Ensemble
+    LSTM_Infer --> Ensemble
+    Ensemble --> UI_Visuals
+
+    %% Offline loop
+    Notebook --> Trainer --> Export --> Artifacts
+    CI --> Notebook
+
+    %% Infra
+    Hosting -->|serves| UI
+    Hosting --> Logs
+    Logs --> Monitoring
 ```
 
+**Diagram Notes (high level):**
+- UI: `app.py` (Streamlit) collects user inputs and renders Plotly visuals.
+- Ingest: `yfinance` -> cached DataFrame (`@st.cache_data`) -> preprocessing (resampling, scaling, sequence windows).
+- Engine: a runtime decision either fits `SARIMAX` live (for interpretability) or loads pre-trained LSTM artifacts (from `artifacts/lstm/`) with `@st.cache_resource` for single-load model objects.
+- LSTM artifacts include the `.keras` weights, `scaler.pkl`, and the last sequence buffers required to create input windows for inference.
+- Ensemble: simple comparator/merger that presents both model outputs and confidence cues to the UI (no heavy ensembling required).
+- Offline: training happens in `STOCK MARKET PREDICITION PROJECT.ipynb` -> produces artifacts committed to `artifacts/` or pushed to an artifact store. Optionally automated via CI/scheduler.
+- Infra: host on Streamlit Cloud, VPS, or containerize; add simple logging and health checks for production readiness.
+
+**Implementation Mapping (file references):**
+- App: [app.py](app.py)
+- Notebook / Training: [STOCK MARKET PREDICITION PROJECT.ipynb](STOCK%20MARKET%20PREDICITION%20PROJECT.ipynb)
+- Artifacts folder: [artifacts/lstm](artifacts/lstm)
+
+**Operational Considerations:**
+- Caching: use `@st.cache_data` for dataframes and `@st.cache_resource` for model objects to avoid re-downloading or re-loading heavy objects.
+- Model Drift: schedule periodic retraining (weekly/monthly) and update `artifacts/` via the offline notebook or CI pipeline.
+- Monitoring: capture simple inference latency and cache hit-rate metrics in logs to detect regressions.
 ---
 
 ## 🛠️ Step-by-Step Setup Guide
