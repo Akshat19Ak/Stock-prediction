@@ -180,27 +180,23 @@ if stocks_data.empty:
     st.error("No data available for selected date range")
     st.stop()
 
-# Reset Date index
-stocks_data.reset_index(inplace=True)
+# Ensure the index is named 'Date' before resetting
+if stocks_data.index.name is None or stocks_data.index.name.lower() == 'date':
+    stocks_data.index.name = 'Date'
+
+# Reset Date from index to column
+stocks_data = stocks_data.reset_index()
 
 # Flatten multi-index columns if present
 if isinstance(stocks_data.columns, pd.MultiIndex):
     stocks_data.columns = stocks_data.columns.get_level_values(0)
 
-# Ensure Date column exists and is datetime
+# Final safety check for Date column
 if 'Date' not in stocks_data.columns:
-    # If Date is still in index, reset again
-    if hasattr(stocks_data.index, 'name') and stocks_data.index.name == 'Date':
-        stocks_data.reset_index(inplace=True)
-    # If still missing, try common alternatives
-    if 'Date' not in stocks_data.columns:
-        date_cols = [col for col in stocks_data.columns if 'date' in col.lower()]
-        if date_cols:
-            stocks_data.rename(columns={date_cols[0]: 'Date'}, inplace=True)
-        else:
-            st.error("Cannot find Date column in downloaded data")
-            st.stop()
+    st.error(f"Unable to extract Date column. Available columns: {list(stocks_data.columns)}")
+    st.stop()
 
+# Ensure Date is datetime
 stocks_data['Date'] = pd.to_datetime(stocks_data['Date'])
 
 st.write("Data from", start_date, "to", end_date)
