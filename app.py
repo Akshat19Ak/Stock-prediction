@@ -11,6 +11,66 @@ from datetime import date
 from statsmodels.tsa.seasonal import seasonal_decompose
 import statsmodels.api as sm
 
+# ================================
+# COLOUR PALETTE & PLOT HELPERS
+# ================================
+PLOT_TEMPLATE   = "plotly_dark"
+COLOR_OPEN      = "#FFB703"   # amber / gold
+COLOR_CLOSE     = "#06D6A0"   # mint green
+COLOR_HIGH      = "#FF6B6B"   # coral red
+COLOR_LOW       = "#C77DFF"   # violet / purple
+COLOR_TREND     = "#FF6B6B"
+COLOR_ACTUAL    = "#06D6A0"
+COLOR_PREDICTED = "#FFD166"
+COLOR_LSTM_HIST       = "#4361EE"
+COLOR_LSTM_VAL_CLOSE  = "#F8961E"
+COLOR_LSTM_VAL_PRED   = "#90BE6D"
+COLOR_LSTM_FUTURE     = "#F94144"
+
+
+def apply_common_layout(fig, title, xaxis_title="Date", yaxis_title="Price (₹)", legend_visible=True):
+    """Apply a consistent, readable dark layout to every Plotly figure."""
+    fig.update_layout(
+        title=dict(
+            text=title,
+            font=dict(size=20, color="white"),
+            x=0.5,
+            xanchor="center",
+        ),
+        template=PLOT_TEMPLATE,
+        xaxis=dict(
+            title=dict(text=xaxis_title, font=dict(size=14, color="#cccccc")),
+            tickfont=dict(size=12, color="#cccccc"),
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.1)",
+            zeroline=False,
+        ),
+        yaxis=dict(
+            title=dict(text=yaxis_title, font=dict(size=14, color="#cccccc")),
+            tickfont=dict(size=12, color="#cccccc"),
+            showgrid=True,
+            gridcolor="rgba(255,255,255,0.1)",
+            zeroline=False,
+        ),
+        legend=dict(
+            visible=legend_visible,
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=13, color="white"),
+            bgcolor="rgba(30,30,30,0.7)",
+            bordercolor="rgba(255,255,255,0.2)",
+            borderwidth=1,
+        ),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(t=90, b=60, l=60, r=20),
+        hovermode="x unified",
+    )
+    return fig
+
 try:
     from keras.models import load_model as keras_load_model
 except Exception:
@@ -141,19 +201,27 @@ def forecast_with_lstm(payload, forecast_days):
 
 
 # ================================
-# APP TITLE
+# PAGE CONFIG & HEADER
 # ================================
-st.title("Stock Prediction App")
-st.subheader("This app predicts the stock trends")
+st.set_page_config(
+    page_title="Stock Prediction App",
+    page_icon="📈",
+    layout="wide",
+)
+
+st.title("📈 Stock Market Price Prediction")
+st.caption("Select a stock and date range from the sidebar. The app will forecast prices using SARIMAX and LSTM models.")
+st.divider()
 
 
 # ================================
 # SIDEBAR INPUTS
 # ================================
-st.sidebar.header("Select Start and End date")
+st.sidebar.header("⚙️ Configuration")
+st.sidebar.markdown("Choose the stock and the date range for analysis.")
 
 start_date = st.sidebar.date_input('Start Date', date(2016, 1, 1))
-end_date = st.sidebar.date_input('End Date', datetime.date.today())
+end_date   = st.sidebar.date_input('End Date', datetime.date.today())
 
 Stocks_symbol = [
     "RELIANCE.NS",
@@ -165,6 +233,17 @@ Stocks_symbol = [
 ]
 
 selected_stock = st.sidebar.selectbox("Choose your stock", Stocks_symbol)
+
+st.sidebar.markdown("---")
+st.sidebar.markdown(
+    "**Stocks legend:**\n"
+    "- RELIANCE.NS — Reliance Industries\n"
+    "- SBIN.NS — State Bank of India\n"
+    "- AXISBANK.NS — Axis Bank\n"
+    "- ITC.NS — ITC Limited\n"
+    "- ASIANPAINT.NS — Asian Paints\n"
+    "- HDFCBANK.NS — HDFC Bank"
+)
 
 
 # ================================
@@ -199,61 +278,82 @@ if 'Date' not in stocks_data.columns:
 # Ensure Date is datetime
 stocks_data['Date'] = pd.to_datetime(stocks_data['Date'])
 
-st.write("Data from", start_date, "to", end_date)
-st.write(stocks_data.tail(10))
+
 
 
 # ================================
-# VISUALIZATION
+# VISUALIZATION — OHLC Price Chart
 # ================================
-st.header("Visualizing data")
+st.header("📉 Historical Price Chart")
+st.caption("🟡 Open  ·  🟢 Close  ·  🔴 High (dotted)  ·  🟣 Low (dashed)  — Click legend to toggle. Drag to zoom, double-click to reset.")
 
-fig = px.line(
-    stocks_data,
-    x='Date',
-    y=['Open', 'Close', 'High', 'Low'],
-    title='Different Variations of Stocks',
-    width=800,
-    height=400
-)
+ohlc_fig = go.Figure()
+ohlc_traces = [
+    ("Open",  COLOR_OPEN,  "solid"),
+    ("Close", COLOR_CLOSE, "solid"),
+    ("High",  COLOR_HIGH,  "dot"),
+    ("Low",   COLOR_LOW,   "dash"),
+]
+for col_name, color, dash in ohlc_traces:
+    ohlc_fig.add_trace(
+        go.Scatter(
+            x=stocks_data['Date'],
+            y=stocks_data[col_name],
+            mode='lines',
+            name=col_name,
+            line=dict(color=color, dash=dash, width=1.5),
+            hovertemplate=f"<b>{col_name}</b>: ₹%{{y:,.2f}}<extra></extra>",
+        )
+    )
 
-st.plotly_chart(fig)
+ohlc_fig = apply_common_layout(ohlc_fig, f"{selected_stock} — Open / Close / High / Low Prices")
+st.plotly_chart(ohlc_fig, use_container_width=True)
+st.divider()
 
 
 # ================================
 # COLUMN SELECTION
 # ================================
-column = st.selectbox(
-    "Select Column whose data being forecasted",
-    ['Open', 'Close', 'High', 'Low']
+column = st.sidebar.selectbox(
+    "Column to Forecast",
+    ['Close', 'Open', 'High', 'Low'],
+    help="Close price is most commonly used for stock forecasting."
 )
 
 data = stocks_data[['Date', column]]
 
-st.write("Selected data")
-st.write(data.tail(10))
-
 
 # ================================
-# DECOMPOSITION
+# DECOMPOSITION — TREND
 # ================================
+st.header("📈 Long-Term Trend")
+st.caption("Seasonal decomposition (additive, 5-day period) isolates the underlying price direction, stripping out weekly noise.")
+
+decomp_series = data[column].ffill().bfill()
 decomposition = seasonal_decompose(
-    data[column],
+    decomp_series,
     model='additive',
-    period=5   # weekly trading pattern
+    period=5,
+    extrapolate_trend='freq'
 )
 
-trend_fig = px.line(
-    x=stocks_data['Date'],
-    y=decomposition.trend,
-    title='Trend',
-    width=800,
-    height=400,
-    labels={'x': 'Date', 'y': 'Price'}
+trend_fig = go.Figure()
+trend_fig.add_trace(
+    go.Scatter(
+        x=stocks_data['Date'],
+        y=decomposition.trend,
+        mode='lines',
+        name='Trend',
+        line=dict(color=COLOR_TREND, width=2),
+        hovertemplate="<b>Trend</b>: ₹%{y:,.2f}<extra></extra>",
+    )
 )
-
-trend_fig.update_traces(line_color='red')
-st.plotly_chart(trend_fig)
+trend_fig = apply_common_layout(
+    trend_fig,
+    f"{selected_stock} — {column} Long-Term Trend",
+)
+st.plotly_chart(trend_fig, use_container_width=True)
+st.divider()
 
 
 # ================================
@@ -267,37 +367,38 @@ q = 2
 # ================================
 # FORECAST INPUT
 # ================================
-st.markdown(
-    "<p style='color:green;font-size:35px;font-weight:bold;'>Forecasting Stocks Data</p>",
-    unsafe_allow_html=True
-)
+st.header("🔮 SARIMAX Short-Term Forecast")
+st.caption("SARIMAX (p=1, d=1, q=2, seasonal period=5) fitted live. Shaded band = 95% confidence interval.")
 
-forecast_period = st.number_input(
-    "Select Number of days for forecasting",
+forecast_period = st.sidebar.number_input(
+    "SARIMAX Forecast Days",
     value=5,
-    min_value=1
+    min_value=1,
+    max_value=60,
+    help="Number of future business days to predict."
 )
 
 
 # ================================
 # SARIMAX MODEL
 # ================================
-model = sm.tsa.statespace.SARIMAX(
-    data[column],
-    order=(p, d, q),
-    seasonal_order=(p, d, q, 5),
-    enforce_stationarity=False,
-    enforce_invertibility=False
-)
-
-model_fit = model.fit(disp=False)
+with st.spinner("Fitting SARIMAX model…"):
+    model_sarimax = sm.tsa.statespace.SARIMAX(
+        data[column],
+        order=(p, d, q),
+        seasonal_order=(p, d, q, 5),
+        enforce_stationarity=False,
+        enforce_invertibility=False
+    )
+    model_fit = model_sarimax.fit(disp=False)
 
 
 # ================================
 # PREDICTIONS (BUSINESS DAYS)
 # ================================
-predictions = model_fit.get_forecast(steps=forecast_period)
+predictions    = model_fit.get_forecast(steps=forecast_period)
 predicted_mean = predictions.predicted_mean
+conf_int       = predictions.conf_int(alpha=0.05)  # 95% CI
 
 future_dates = pd.bdate_range(
     start=data['Date'].iloc[-1],
@@ -305,20 +406,20 @@ future_dates = pd.bdate_range(
 )[1:]
 
 predictions_df = pd.DataFrame({
-    'Date': future_dates,
-    'predicted_mean': predicted_mean.values
+    'Date':          future_dates,
+    'predicted_mean': predicted_mean.values,
+    'lower_95':      conf_int.iloc[:, 0].values,
+    'upper_95':      conf_int.iloc[:, 1].values,
 })
 
-st.write("## Predictions")
-st.write(predictions_df)
 
-st.write("## Actual Data")
-st.write(data.tail())
 
 
 # ================================
 # FINAL COMPARISON PLOT
 # ================================
+st.header(f"📊 {selected_stock} — Actual vs SARIMAX Forecast ({int(forecast_period)}-Day)")
+
 fig_final = go.Figure()
 
 fig_final.add_trace(
@@ -326,8 +427,22 @@ fig_final.add_trace(
         x=data['Date'],
         y=data[column],
         mode='lines',
-        name='Actual',
-        line=dict(color='green')
+        name=f'Actual {column}',
+        line=dict(color=COLOR_ACTUAL, width=2),
+        hovertemplate="<b>Actual</b>: ₹%{y:,.2f}<extra></extra>",
+    )
+)
+
+fig_final.add_trace(
+    go.Scatter(
+        x=list(predictions_df['Date']) + list(predictions_df['Date'][::-1]),
+        y=list(predictions_df['upper_95']) + list(predictions_df['lower_95'][::-1]),
+        fill='toself',
+        fillcolor='rgba(255,209,102,0.2)',
+        line=dict(color='rgba(255,209,102,0)'),
+        hoverinfo='skip',
+        name='95% Confidence Interval',
+        showlegend=True,
     )
 )
 
@@ -335,144 +450,207 @@ fig_final.add_trace(
     go.Scatter(
         x=predictions_df['Date'],
         y=predictions_df['predicted_mean'],
-        mode='lines',
-        name='Predicted',
-        line=dict(color='red')
+        mode='lines+markers',
+        name='SARIMAX Forecast',
+        line=dict(color=COLOR_PREDICTED, width=3, dash='dot'),
+        marker=dict(size=8, symbol='circle', color=COLOR_PREDICTED),
+        hovertemplate="<b>Forecast</b>: ₹%{y:,.2f}<extra></extra>",
     )
 )
 
-fig_final.update_layout(
-    title='Actual vs Predicted',
-    xaxis_title='Date',
-    yaxis_title='Price',
-    width=800,
-    height=400
+fig_final = apply_common_layout(
+    fig_final,
+    f"{selected_stock} — {column}: Actual vs SARIMAX Forecast"
 )
+st.plotly_chart(fig_final, use_container_width=True)
 
-st.plotly_chart(fig_final)
 
-
-# ================================
-# SEPARATE GRAPHS
-# ================================
-if st.button("Show Separate Graphs"):
-
-    actual_fig = px.line(
-        x=data['Date'],
-        y=data[column],
-        title='Actual Prices',
-        width=1000,
-        height=400,
-        labels={'x': 'Date', 'y': 'Price'}
-    )
-
-    actual_fig.update_traces(line_color='green')
-    st.plotly_chart(actual_fig)
-
-    pred_fig = px.line(
-        x=predictions_df['Date'],
-        y=predictions_df['predicted_mean'],
-        title='Predicted Prices',
-        width=1000,
-        height=400,
-        labels={'x': 'Date', 'y': 'Price'}
-    )
-
-    pred_fig.update_traces(line_color='red')
-    st.plotly_chart(pred_fig)
+st.divider()
 
 
 # ================================
 # LSTM PREDICTION SECTION
 # ================================
-st.header("LSTM Predictions (From Notebook Artifacts)")
+st.header("🤖 LSTM Deep Learning Forecast")
+st.caption("Pre-trained LSTM (60-day rolling window). Inference is millisecond-fast — model runs entirely offline from saved artifacts.")
 
 lstm_payload, lstm_error = load_lstm_artifacts()
 if lstm_error:
     st.warning(
-        "LSTM artifacts are not ready yet. Run the last cell in STOCK MARKET PREDICITION PROJECT.ipynb "
-        f"to generate files in '{ARTIFACT_DIR}'. Details: {lstm_error}"
+        "⚠️ LSTM artifacts are not ready yet. Run the last cell in "
+        "**STOCK MARKET PREDICITION PROJECT.ipynb** to generate files in "
+        f"`{ARTIFACT_DIR}`.\n\nDetails: {lstm_error}"
     )
 else:
-    lstm_days = st.number_input(
-        "Select Number of business days for LSTM forecasting",
+    lstm_days = st.sidebar.number_input(
+        "LSTM Forecast Days",
         value=30,
         min_value=1,
         max_value=180,
         step=1,
-        key="lstm_days"
+        key="lstm_days",
+        help="Number of future business days to predict using the LSTM model."
     )
 
-    lstm_forecast_values = forecast_with_lstm(lstm_payload, int(lstm_days))
-    lstm_future_dates = pd.bdate_range(start=stocks_data['Date'].iloc[-1], periods=int(lstm_days) + 1)[1:]
+    with st.spinner("Running LSTM inference…"):
+        lstm_forecast_values = forecast_with_lstm(lstm_payload, int(lstm_days))
+
+    # =====================================================================
+    # DATE RECONSTRUCTION — must happen BEFORE building the table/chart
+    # The LSTM artifacts were saved from the Notebook's training run.
+    # The model's "present" is the END of the validation split, NOT today.
+    # All traces must be anchored to that timeline so the chart is continuous.
+    # =====================================================================
+    all_dates      = pd.to_datetime(stocks_data['Date'].values)
+    history_payload = lstm_payload.get("history_payload")
+
+    # --- Training history dates ---
+    if history_payload and "close_series" in history_payload:
+        history_vals = np.array(history_payload["close_series"]).flatten()
+        n_history    = len(history_vals)
+        if n_history <= len(all_dates):
+            history_dates = all_dates[:n_history]           # first N dates
+        else:
+            history_dates = pd.bdate_range(end=all_dates[n_history - 1], periods=n_history)
+    else:
+        history_vals  = None
+        history_dates = all_dates
+
+    # --- Validation dates (immediately follow training) ---
+    last_train_date = history_dates[-1]
+
+    if history_payload and "valid_close" in history_payload and "valid_predictions" in history_payload:
+        valid_close_vals = np.array(history_payload["valid_close"]).flatten()
+        valid_pred_vals  = np.array(history_payload["valid_predictions"]).flatten()
+        n_valid          = len(valid_close_vals)
+        valid_dates      = pd.bdate_range(start=last_train_date, periods=n_valid + 1)[1:]
+        forecast_anchor  = valid_dates[-1]   # future forecast starts HERE
+    else:
+        valid_close_vals = None
+        valid_pred_vals  = None
+        valid_dates      = None
+        forecast_anchor  = last_train_date
+
+    # --- Future forecast dates (anchored to end of validation, NOT today) ---
+    lstm_future_dates = pd.bdate_range(start=forecast_anchor, periods=int(lstm_days) + 1)[1:]
 
     lstm_forecast_df = pd.DataFrame({
         'Date': lstm_future_dates,
         'LSTM_Prediction': lstm_forecast_values
     })
 
-    st.write("## LSTM Forecast Table")
-    st.write(lstm_forecast_df)
+    # --- Bridge: actual prices from validation-end → today (fills the gap) ---
+    # Find the index in all_dates that is closest to / just after forecast_anchor
+    bridge_mask  = all_dates > forecast_anchor
+    bridge_dates = all_dates[bridge_mask]
+    if 'Close' in stocks_data.columns and len(bridge_dates) > 0:
+        bridge_vals = stocks_data.loc[bridge_mask, 'Close'].values
+    else:
+        bridge_dates = None
+        bridge_vals  = None
 
+    st.caption("🔵 Training  ·  🟠 Validation Actual  ·  🟢 Validation Prediction  ·  ⚪ Recent Actual  ·  🔴 Future Forecast")
+
+    # =====================================================================
+    # CHART
+    # =====================================================================
     lstm_fig = go.Figure()
 
-    history_payload = lstm_payload.get("history_payload")
-    if history_payload and "close_series" in history_payload:
-        history_close = pd.Series(np.array(history_payload["close_series"]).flatten())  # historical close from notebook ticker run
+    # 1. Training history
+    if history_vals is not None:
         lstm_fig.add_trace(
             go.Scatter(
-                x=history_close.index,
-                y=history_close.values,
+                x=history_dates,
+                y=history_vals,
                 mode='lines',
-                name='LSTM Training History (Close)',
-                line=dict(color='royalblue')
+                name='Training History (Close)',
+                line=dict(color=COLOR_LSTM_HIST, width=1.5),
+                hovertemplate="<b>Train Close</b>: ₹%{y:,.2f}<extra></extra>",
             )
         )
 
-    if history_payload and "valid_predictions" in history_payload and "valid_close" in history_payload:
-        valid_close = pd.Series(np.array(history_payload["valid_close"]).flatten())
-        valid_pred = pd.Series(np.array(history_payload["valid_predictions"]).flatten())
-
+    # 2. Validation actual
+    if valid_close_vals is not None:
         lstm_fig.add_trace(
             go.Scatter(
-                x=valid_close.index,
-                y=valid_close.values,
+                x=valid_dates,
+                y=valid_close_vals,
                 mode='lines',
-                name='LSTM Validation Close',
-                line=dict(color='orange')
-            )
-        )
-        lstm_fig.add_trace(
-            go.Scatter(
-                x=valid_pred.index,
-                y=valid_pred.values,
-                mode='lines',
-                name='LSTM Validation Prediction',
-                line=dict(color='green', dash='dash')
+                name='Validation Actual (Close)',
+                line=dict(color=COLOR_LSTM_VAL_CLOSE, width=2),
+                hovertemplate="<b>Val Actual</b>: ₹%{y:,.2f}<extra></extra>",
             )
         )
 
+    # 3. Validation prediction
+    if valid_pred_vals is not None:
+        lstm_fig.add_trace(
+            go.Scatter(
+                x=valid_dates,
+                y=valid_pred_vals,
+                mode='lines',
+                name='Validation Prediction',
+                line=dict(color=COLOR_LSTM_VAL_PRED, width=2, dash='dash'),
+                hovertemplate="<b>Val Prediction</b>: ₹%{y:,.2f}<extra></extra>",
+            )
+        )
+
+    # 4. Bridge trace — real prices from validation-end to today
+    if bridge_dates is not None and len(bridge_dates) > 0:
+        lstm_fig.add_trace(
+            go.Scatter(
+                x=bridge_dates,
+                y=bridge_vals,
+                mode='lines',
+                name='Recent Actual (Bridge to Today)',
+                line=dict(color='#AAAAAA', width=1.5),
+                hovertemplate="<b>Recent Close</b>: ₹%{y:,.2f}<extra></extra>",
+            )
+        )
+
+    # 5. Future forecast — anchored just after bridge ends (= today)
     lstm_fig.add_trace(
         go.Scatter(
-            x=lstm_forecast_df['Date'],
-            y=lstm_forecast_df['LSTM_Prediction'],
-            mode='lines',
-            name='LSTM Future Forecast',
-            line=dict(color='red', dash='dot')
+            x=lstm_future_dates,
+            y=lstm_forecast_values,
+            mode='lines+markers',
+            name=f'Future Forecast (next {int(lstm_days)} days)',
+            line=dict(color=COLOR_LSTM_FUTURE, width=3, dash='dot'),
+            marker=dict(size=6, symbol='circle', color=COLOR_LSTM_FUTURE),
+            hovertemplate="<b>LSTM Forecast</b>: ₹%{y:,.2f}<extra></extra>",
         )
     )
 
-    lstm_fig.update_layout(
-        title='LSTM Based Stock Forecast',
-        xaxis_title='Date',
-        yaxis_title='Price',
-        width=1000,
-        height=450
+    lstm_fig = apply_common_layout(
+        lstm_fig,
+        f"{selected_stock} — LSTM Deep Learning Forecast (Continuous Timeline)"
     )
-    st.plotly_chart(lstm_fig)
+    lstm_fig.update_layout(
+        height=540,
+        margin=dict(t=90, b=170, l=60, r=20),
+        legend=dict(
+            orientation="h",
+            yanchor="top",
+            y=-0.28,
+            xanchor="center",
+            x=0.5,
+            font=dict(size=11, color="white"),
+            bgcolor="rgba(30,30,30,0.8)",
+            bordercolor="rgba(255,255,255,0.3)",
+            borderwidth=1,
+            tracegroupgap=4,
+        )
+    )
+    st.plotly_chart(lstm_fig, use_container_width=True)
 
     metrics = lstm_payload.get("metrics")
     if metrics:
-        st.write("## LSTM Notebook Metrics")
-        metrics_df = pd.DataFrame([metrics])
-        st.write(metrics_df)
+        st.markdown("#### 📐 Model Accuracy — Validation Set")
+        st.caption("RMSE & MAE: prediction error in ₹ (lower = better). R² closer to 1.0 = better fit.")
+        st.dataframe(pd.DataFrame([metrics]), use_container_width=True)
+
+st.divider()
+st.caption(
+    "📌 **Disclaimer:** This app is for educational purposes only. "
+    "Stock price predictions are not financial advice. Past performance does not guarantee future results."
+)
